@@ -3,8 +3,10 @@
 import React, { useState, useEffect } from "react";
 import { Menu, X, ChevronDown, CheckCircle, CalendarDays, Clock, User, Mail, Phone, FileText, Stethoscope, HeartPulse, Brain, MapPin } from "lucide-react";
 
-const WEBHOOK_URL = "https://n8n.my-clinic-de.com/webhook/clinic";
+const WEBHOOK_URL = "http://localhost:5678/webhook-test/clinic";
 const RESERVATION_YEAR = "2026";
+
+const N8N_WAITING_STATUS_URL = "https://YOUR_N8N_URL/waiting-status"; // <<< あなたのn8nのURLに置き換えてください
 
 /** 診療案内のアイコンキーと Lucide アイコンマッピング（CLINIC_DATA.services の iconKey 用） */
 const SERVICE_ICONS = { stethoscope: Stethoscope, heartPulse: HeartPulse, brain: Brain } as const;
@@ -185,17 +187,17 @@ const timeSlots = [
 ];
 
 export default function HomePage() {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [formStatus, setFormStatus] = useState("idle"); // これがなかったやつです
-  const [serverMessage, setServerMessage] = useState(""); // n8nからの返信を入れる場所
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [webhookMessage, setWebhookMessage] = useState<string | null>(null);
+  const [serverMessage, setServerMessage] = useState<string>(""); // n8nからのテキストレスポンスを保存
   const [modalOpen, setModalOpen] = useState<null | "privacy" | "terms">(null);
   const [selectedNotice, setSelectedNotice] = useState<{ date: string; title: string; content: string } | null>(null);
+  const [waitingCount, setWaitingCount] = useState<number | null>(null);
+  const [waitingLoading, setWaitingLoading] = useState(true);
+  const [waitingError, setWaitingError] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     dob: "",
@@ -209,75 +211,89 @@ export default function HomePage() {
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 50);
     window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+
+    const fetchWaitingStatus = async () => {
+      setWaitingLoading(true);
+      setWaitingError(false);
+      try {
+        const res = await fetch(N8N_WAITING_STATUS_URL);
+        const data = await res.json();
+        if (typeof data.waitingCount === "number") {
+          setWaitingCount(data.waitingCount);
+        } else {
+          setWaitingError(true);
+        }
+      } catch (err) {
+        console.error("Failed to fetch waiting status:", err);
+        setWaitingError(true);
+      } finally {
+        setWaitingLoading(false);
+      }
+    };
+
+    fetchWaitingStatus(); // Initial fetch
+    const intervalId = setInterval(fetchWaitingStatus, 30000); // Fetch every 30 seconds
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      clearInterval(intervalId);
+    };
   }, []);
 
   const handleNavClick = (href: string) => {
     setIsMobileMenuOpen(false);
     if (href === "#") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } else {
       document.querySelector(href)?.scrollIntoView({ behavior: "smooth" });
     }
   };
 
-// 224行目から貼り付け
-const handleReservationSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-  e.preventDefault();
-  setIsSubmitting(true);
-  setServerMessage(""); // メッセージをリセット
+  const handleReservationSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setServerMessage(""); // メッセージをリセット
 
-  // 日付・時間の未選択チェック
-  if (!formData.month || !formData.day || !selectedTime) {
-     setServerMessage("日付と時間を選択してください。");
-     setIsSubmitting(false);
-     return;
-  }
-
-  // データの準備（元のコードのロジックを維持）
-  const month = formData.month.padStart(2, "0");
-  const day = formData.day.padStart(2, "0");
-  // ※ RESERVATION_YEAR が未定義エラーになる場合は 2026 など直接書いてください
-  const preferredDate = `${RESERVATION_YEAR}-${month}-${day}`;
-  
-  const data = {
-    name: formData.name,
-    dateOfBirth: formData.dob,
-    email: formData.email,
-    phone: formData.phone,
-    symptoms: formData.symptoms,
-    preferredDate,
-    preferredTime: selectedTime,
-    preferredDateTime: `${preferredDate} ${selectedTime}`,
-    submittedAt: new Date().toISOString(),
-  };
-
-  try {
-    const res = await fetch(WEBHOOK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-
-    const resultText = await res.text();
-    setServerMessage(resultText);
-
-    // ★ここが修正ポイント
-    if (resultText.includes("申し訳ありません")) {
-      // 失敗時：画面を切り替えずに上に戻る
-      setIsSubmitted(false);
-    } else {
-      // 成功時
-      if (res.ok) {
-        setIsSubmitted(true);
-      }
+    // 日付・時間の未選択チェック
+    if (!formData.month || !formData.day || !selectedTime) {
+       setServerMessage("日付と時間を選択してください。");
+       setIsSubmitting(false);
+       setIsSubmitted(true);
+       return;
     }
-  } catch (error) {
-    console.error("Error:", error);
-    setServerMessage("送信エラーが発生しました。");
-  } finally {
+
+    // データの準備（元のコードのロジックを維持）
+    const month = formData.month.padStart(2, "0");
+    const day = formData.day.padStart(2, "0");
+    const preferredDate = `${RESERVATION_YEAR}-${month}-${day}`;
+
+    const data = {
+      name: formData.name,
+      dateOfBirth: formData.dob,
+      email: formData.email,
+      phone: formData.phone,
+      symptoms: formData.symptoms,
+      preferredDate,
+      preferredTime: selectedTime,
+      preferredDateTime: `${preferredDate} ${selectedTime}`,
+      submittedAt: new Date().toISOString(),
+    };
+
+    try {
+      const response = await fetch(WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const message = await response.text(); // n8nからの返信をテキストとして取得
+      setServerMessage(message); // 返信内容を保存
+    } catch (error) {
+      console.error("Error submitting reservation:", error);
+      setServerMessage("送信中にエラーが発生しました。"); // エラー時のメッセージ
+    }
     setIsSubmitting(false);
-  }
-};
+    setIsSubmitted(true);
+  };
 
   return (
     <main className="min-h-screen">
@@ -374,6 +390,38 @@ const handleReservationSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
             <br className="hidden md:block" />
             患者様一人ひとりに寄り添った診療を提供いたします。
           </p>
+          {/* 待ち状況表示コンポーネント */}
+          <div className="mb-12">
+            {waitingLoading && (
+              <div className="bg-blue-50 text-blue-700 p-4 rounded-lg shadow-md max-w-sm mx-auto animate-pulse">
+                <p className="text-center font-medium">混雑状況を確認中...</p>
+              </div>
+            )}
+            {!waitingLoading && waitingError && (
+              <div className="bg-red-50 text-red-700 p-4 rounded-lg shadow-md max-w-sm mx-auto">
+                <p className="text-center font-medium">混雑状況の取得に失敗しました。</p>
+              </div>
+            )}
+            {!waitingLoading && !waitingError && waitingCount !== null && (
+              <div
+                className={`p-4 rounded-lg shadow-md max-w-sm mx-auto text-center
+                  ${waitingCount <= 3 ? "bg-blue-50 text-blue-700"
+                  : waitingCount <= 9 ? "bg-yellow-50 text-yellow-700"
+                  : "bg-red-50 text-red-700"}
+                `}
+              >
+                <p className="text-xl font-semibold mb-2">現在、{waitingCount}人待ち</p>
+                <p className="text-sm">
+                  {waitingCount <= 3
+                    ? "現在、スムーズに診察可能です"
+                    : waitingCount <= 9
+                    ? "少し混み合っています。時間に余裕を持ってお越しください"
+                    : "現在混雑しています。お急ぎの方はご注意ください"}
+                </p>
+              </div>
+            )}
+          </div>
+
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button
               type="button"
@@ -538,7 +586,7 @@ const handleReservationSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
       {/* Reservation */}
       <section id="reservation" className="py-24 md:py-32 bg-secondary">
         <div className="max-w-4xl mx-auto px-6">
-        {isSubmitted ? (
+          {isSubmitted ? (
             <>
               <div className="border-0 shadow-xl rounded-lg bg-card">
                 <div className="py-16 text-center px-6">
@@ -548,19 +596,15 @@ const handleReservationSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
                   <h3 className="font-serif text-2xl md:text-3xl font-medium text-card-foreground mb-4">
                     ご予約ありがとうございます
                   </h3>
-                  
-                  {/* n8nからの返信表示エリア */}
-                  <div className="mt-6 p-6 bg-slate-50 rounded-xl border border-[#008080]/20 text-slate-700 leading-relaxed">
-                    {serverMessage ? (
-                      <span className="font-bold text-[#008080] whitespace-pre-wrap">{serverMessage}</span>
-                    ) : (
-                      <>
-                        ご予約内容の確認メールをお送りいたしました。
-                        <br />
-                        ご不明な点がございましたら、お気軽にお問い合わせください。
-                      </>
-                    )}
-                  </div>
+                  {serverMessage ? (
+                    <p className="text-foreground leading-relaxed mb-4 whitespace-pre-wrap">{serverMessage}</p>
+                  ) : (
+                    <p className="text-muted-foreground leading-relaxed">
+                      ご予約内容の確認メールをお送りいたしました。
+                      <br />
+                      ご不明な点がございましたら、お気軽にお問い合わせください。
+                    </p>
+                  )}
                 </div>
               </div>
             </>
@@ -588,12 +632,6 @@ const handleReservationSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
                   </div>
                 </div>
                 <div className="pt-8 px-6 pb-8">
-                  {/* エラーメッセージ表示エリア */}
-          {serverMessage && serverMessage.includes("申し訳ありません") && (
-            <div className="mb-8 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg font-bold text-center">
-              ⚠️ {serverMessage}
-            </div>
-          )}
                   <form onSubmit={handleReservationSubmit} className="space-y-8">
                     <div className="space-y-6">
                       <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
