@@ -3,10 +3,10 @@
 import React, { useState, useEffect } from "react";
 import { Menu, X, ChevronDown, CheckCircle, CalendarDays, Clock, User, Mail, Phone, FileText, Stethoscope, HeartPulse, Brain, MapPin } from "lucide-react";
 
-const WEBHOOK_URL = "http://localhost:5678/webhook-test/clinic";
+const WEBHOOK_URL = "https://n8n.my-clinic-de.com/webhook/clinic";
 const RESERVATION_YEAR = "2026";
 
-const N8N_WAITING_STATUS_URL = "https://qualified-evans-mountain-saint.trycloudflare.com/webhook/waiting-status"; // <<< あなたのn8nのURLに置き換えてください
+const N8N_WAITING_STATUS_URL = "https://n8n.my-clinic-de.com/webhook/get-waiting-count"; // <<< あなたのn8nのURLに置き換えてください
 
 /** 診療案内のアイコンキーと Lucide アイコンマッピング（CLINIC_DATA.services の iconKey 用） */
 const SERVICE_ICONS = { stethoscope: Stethoscope, heartPulse: HeartPulse, brain: Brain } as const;
@@ -216,7 +216,7 @@ export default function HomePage() {
       setWaitingLoading(true);
       setWaitingError(false);
       try {
-        const res = await fetch("https://qualified-evans-mountain-saint.trycloudflare.com/webhook/get-waiting-count");
+        const res = await fetch(N8N_WAITING_STATUS_URL);
         const data = await res.json();
         
         // n8nのデータ名が waitingCount でも count でも動くようにしています
