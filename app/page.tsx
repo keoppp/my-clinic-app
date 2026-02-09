@@ -6,7 +6,7 @@ import { Menu, X, ChevronDown, CheckCircle, CalendarDays, Clock, User, Mail, Pho
 const WEBHOOK_URL = "http://localhost:5678/webhook-test/clinic";
 const RESERVATION_YEAR = "2026";
 
-const N8N_WAITING_STATUS_URL = "https://YOUR_N8N_URL/waiting-status"; // <<< あなたのn8nのURLに置き換えてください
+const N8N_WAITING_STATUS_URL = "https://qualified-evans-mountain-saint.trycloudflare.com/webhook/waiting-status"; // <<< あなたのn8nのURLに置き換えてください
 
 /** 診療案内のアイコンキーと Lucide アイコンマッピング（CLINIC_DATA.services の iconKey 用） */
 const SERVICE_ICONS = { stethoscope: Stethoscope, heartPulse: HeartPulse, brain: Brain } as const;
@@ -216,10 +216,14 @@ export default function HomePage() {
       setWaitingLoading(true);
       setWaitingError(false);
       try {
-        const res = await fetch(N8N_WAITING_STATUS_URL);
+        const res = await fetch("https://qualified-evans-mountain-saint.trycloudflare.com/webhook/get-waiting-count");
         const data = await res.json();
-        if (typeof data.waitingCount === "number") {
-          setWaitingCount(data.waitingCount);
+        
+        // n8nのデータ名が waitingCount でも count でも動くようにしています
+        const count = data.waitingCount ?? data.count;
+        
+        if (typeof count === "number") {
+          setWaitingCount(count);
         } else {
           setWaitingError(true);
         }
@@ -231,8 +235,8 @@ export default function HomePage() {
       }
     };
 
-    fetchWaitingStatus(); // Initial fetch
-    const intervalId = setInterval(fetchWaitingStatus, 30000); // Fetch every 30 seconds
+    fetchWaitingStatus(); // 初回読み込み
+    const intervalId = setInterval(fetchWaitingStatus, 30000); // 30秒ごとに更新
 
     return () => {
       window.removeEventListener("scroll", handleScroll);
