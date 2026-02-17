@@ -1,5 +1,6 @@
 "use client";
 
+import FAQ from "../components/FAQ";
 import React, { useState, useEffect } from "react";
 import { Menu, X, ChevronDown, CheckCircle, CalendarDays, Clock, User, Mail, Phone, FileText, Stethoscope, HeartPulse, Brain, MapPin } from "lucide-react";
 
@@ -474,6 +475,7 @@ export default function HomePage() {
         </div>
       </section>
 
+      <FAQ />
       {/* Services */}
       <section id="services" className="py-24 md:py-32 bg-secondary">
         <div className="max-w-7xl mx-auto px-6">
