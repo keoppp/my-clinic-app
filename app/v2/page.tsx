@@ -1,17 +1,26 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function ReservationPage() {
   const [hasVisited, setHasVisited] = useState("no");
+  const [appointmentType, setAppointmentType] = useState("new"); // 予約区分の状態管理
   const [isLoading, setIsLoading] = useState(false);
+
+  // 「初めて」を選んだら強制的に「初診」にする連動ロジック
+  useEffect(() => {
+    if (hasVisited === "no") {
+      setAppointmentType("new");
+    }
+  }, [hasVisited]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
+    
     const formData = new FormData(e.currentTarget);
     const data = Object.fromEntries(formData.entries());
 
-    // あなたのn8n Webhook URL
+    // --- 【重要】ここを実際のn8n Webhook URL（Production URL）に書き換えてください ---
     const WEBHOOK_URL = "https://n8n.my-clinic-de.com/webhook/new-appointment";
 
     try {
@@ -20,6 +29,9 @@ export default function ReservationPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
+
+      if (!response.ok) throw new Error('Network response was not ok');
+
       const result = await response.json();
 
       if (result.redirect_url) {
@@ -28,7 +40,8 @@ export default function ReservationPage() {
         alert("予約を受付ました。次は問診票の記入をお願いします。");
       }
     } catch (err) {
-      alert("通信エラーが発生しました。n8nの接続を確認してください。");
+      console.error(err);
+      alert("通信エラーが発生しました。n8nの接続（Tunnel）やURLが正しいか確認してください。");
     } finally {
       setIsLoading(false);
     }
@@ -41,19 +54,6 @@ export default function ReservationPage() {
           <h1 className="text-4xl font-extrabold text-blue-800 tracking-tight mb-3">Online Reservation</h1>
           <p className="text-slate-500">24時間いつでも、スマホから簡単予約</p>
         </header>
-
-        {/* 進行度インジケーター */}
-        <div className="flex justify-between items-center mb-12 px-8 relative">
-          <div className="z-10 flex flex-col items-center">
-            <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold shadow-lg shadow-blue-200">1</div>
-            <span className="text-[10px] mt-2 font-bold text-blue-600">予約情報</span>
-          </div>
-          <div className="absolute top-5 left-0 w-full h-[2px] bg-slate-200 -z-0"></div>
-          <div className="z-10 flex flex-col items-center">
-            <div className="w-10 h-10 rounded-full bg-white border-2 border-slate-200 text-slate-300 flex items-center justify-center font-bold">2</div>
-            <span className="text-[10px] mt-2 font-bold text-slate-400">事前問診</span>
-          </div>
-        </div>
 
         <main className="bg-white rounded-[2.5rem] shadow-2xl shadow-blue-100/60 p-8 md:p-12 border border-blue-50">
           <form onSubmit={handleSubmit} className="space-y-10">
@@ -78,11 +78,21 @@ export default function ReservationPage() {
             {/* 区分選択 */}
             <div className="space-y-4">
               <label className="text-sm font-black text-blue-900 uppercase tracking-widest block">Appointment Type / 予約区分</label>
-              <select name="type" className="w-full p-5 bg-slate-50 border-none rounded-2xl appearance-none focus:ring-4 focus:ring-blue-100 outline-none font-bold text-slate-700" required>
+              <select 
+                name="type" 
+                value={appointmentType}
+                onChange={(e) => setAppointmentType(e.target.value)}
+                disabled={hasVisited === "no"} // 「初めて」の場合は選択不可
+                className={`w-full p-5 bg-slate-50 border-none rounded-2xl appearance-none focus:ring-4 focus:ring-blue-100 outline-none font-bold text-slate-700 ${hasVisited === "no" ? 'opacity-60 cursor-not-allowed' : ''}`} 
+                required
+              >
                 <option value="new">初診 (新しい悩み・症状がある)</option>
                 <option value="return">再診 (いつものお薬・定期通院)</option>
                 <option value="checkup">定期健診 (特定健診・自費検診)</option>
               </select>
+              {hasVisited === "no" && <p className="text-[10px] text-blue-500 font-bold ml-2">※初めての方は「初診」のみとなります</p>}
+              {/* disabledだと値が送信されないため、hiddenで送る */}
+              {hasVisited === "no" && <input type="hidden" name="type" value="new" />}
             </div>
 
             <button type="submit" disabled={isLoading} className={`w-full py-6 rounded-3xl font-black text-white text-xl shadow-xl transition-all active:scale-95 ${isLoading ? 'bg-slate-300' : 'bg-gradient-to-br from-blue-600 to-blue-700 shadow-blue-200 hover:brightness-110'}`}>
